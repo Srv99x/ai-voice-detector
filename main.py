@@ -1,4 +1,5 @@
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()  # Load variables from .env file
@@ -126,8 +127,8 @@ async def read_root():
 @app.post("/detect-audio/", response_model=AudioDetectionResponse)
 @limiter.limit("10/minute")  # max 10 requests per minute per IP
 async def detect_audio(
-    http_request: Request,  # required by slowapi for IP extraction
-    request: AudioDetectionRequest,
+    request: Request,  # required by slowapi for IP extraction
+    body: AudioDetectionRequest,
     authorization: Optional[str] = Header(None),
     x_api_key: Optional[str] = Header(None)
 ):
@@ -148,15 +149,15 @@ async def detect_audio(
     try:
         # --- STEP 2: NORMALIZE FIELD NAMES (camelCase vs snake_case) ---
         # Resolve audio format field
-        final_format = request.audioFormat or request.audio_format
+        final_format = body.audioFormat or body.audio_format
         if not final_format:
             final_format = "mp3"  # Default to mp3 if not provided
         
         # Resolve audio data field (try all possible field names)
         final_base64 = (
-            request.audioBase64 or 
-            request.audio_base64 or 
-            request.audio_base64_format
+            body.audioBase64 or
+            body.audio_base64 or
+            body.audio_base64_format
         )
         
         if not final_base64:
@@ -176,8 +177,19 @@ async def detect_audio(
         
         # --- STEP 4: LOAD AUDIO FILE ---
         try:
-            audio, sample_rate = librosa.load(io.BytesIO(audio_bytes), sr=16000)
+            # Determine the file extension to ensure correct parsing
+            ext = f".{final_format.strip('.')}" if final_format else ".mp3"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+                tmp_file.write(audio_bytes)
+                tmp_path = tmp_file.name
+
+            try:
+                audio, sample_rate = librosa.load(tmp_path, sr=16000)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
         except Exception as e:
+            print(f"Error reading audio file: {e}")
             return AudioDetectionResponse(
                 is_ai_generated=True,
                 confidence_score=0.0,
