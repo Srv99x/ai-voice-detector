@@ -50,10 +50,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://srv99x-voice-detector-live.hf.space",  # HF Space itself
-        "https://*.vercel.app",                          # Vercel preview/prod deployments
         "http://localhost:5173",                         # Local Vite dev server
         "http://localhost:3000",                         # Local alt port
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",       # Vercel preview/prod deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
